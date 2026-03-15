@@ -8,8 +8,8 @@ from pathlib import Path
 
 from backend.parser.tokenizer import strip_comments
 
-# Matches: program <Name>;
-_PROGRAM_RE = re.compile(r"program\s+(\w+)\s*;", re.IGNORECASE)
+# Matches: program <Name>;  /  library <Name>;  /  package <Name>;
+_PROGRAM_RE = re.compile(r"(?:program|library|package)\s+(\w+)\s*;", re.IGNORECASE)
 
 # Matches uses clause content between `uses` keyword and terminating `;`
 _USES_BLOCK_RE = re.compile(r"\buses\b(.*?);", re.IGNORECASE | re.DOTALL)
@@ -75,7 +75,11 @@ def parse_dpr_content(source: str, dpr_path: Path | None = None) -> DprInfo:
     # Extract project name
     program_match = _PROGRAM_RE.search(cleaned)
     if not program_match:
-        raise ValueError("Could not find 'program <Name>;' declaration in .dpr content")
+        preview = cleaned[:200].strip()
+        raise ValueError(
+            f"Could not find 'program/library/package <Name>;' declaration in .dpr content. "
+            f"File starts with: {preview!r}"
+        )
     project_name = program_match.group(1)
 
     # Extract uses clause
