@@ -1,0 +1,11 @@
+{
+  "name": "delphi-call-graph-analyzer",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
