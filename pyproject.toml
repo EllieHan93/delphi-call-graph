@@ -1,0 +1,23 @@
+[project]
+name = "delphi-call-analyzer"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["backend/tests"]
+addopts = "--cov=backend --cov-report=term-missing -q"
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/tests/*", "backend/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
