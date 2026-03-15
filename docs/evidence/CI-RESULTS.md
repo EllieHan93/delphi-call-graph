@@ -14,8 +14,9 @@ on:
   pull_request: [main]
 
 jobs:
-  backend:          # Python 3.12 + Ruff + pytest
-  frontend:         # Node 20 + ESLint + Vitest + tsc + vite build
+  backend:          # Python 3.12 + Ruff + pytest (커버리지 임계값 85%)
+  frontend:         # Node 20 + ESLint + Vitest (커버리지 임계값 70%) + vite build
+  docker:           # Docker 멀티스테이지 빌드 검증 (backend + frontend 완료 후)
 ```
 
 ### Backend Job 단계
@@ -25,7 +26,8 @@ jobs:
 3. pip cache (hashFiles('backend/requirements.txt'))
 4. pip install -r backend/requirements.txt
 5. ruff check backend/
-6. pytest backend/tests/ --cov=backend --cov-report=term-missing
+6. pytest backend/tests/ --cov=backend --cov-report=term-missing --cov-report=xml --cov-fail-under=85
+7. Upload coverage.xml as artifact (retention: 14days)
 ```
 
 ### Frontend Job 단계
@@ -33,10 +35,19 @@ jobs:
 1. actions/checkout@v4
 2. actions/setup-node@v4 (node-version: "20")
 3. npm cache (hashFiles('frontend/package-lock.json'))
-4. cd frontend && npm ci
+4. cd frontend && npm install
 5. npm run lint
-6. npm test
-7. npm run build
+6. npm run test:coverage  (--coverage --thresholds statements/branches/lines:70%, functions:60%)
+7. Upload frontend/coverage/ as artifact (retention: 14days)
+8. npm run build
+```
+
+### Docker Build Job (신규)
+```
+1. actions/checkout@v4
+2. docker build -t delphi-call-graph-analyzer:ci .
+3. 컨테이너 기동 → curl http://localhost:8000/ 헬스체크
+4. 컨테이너 종료 및 삭제
 ```
 
 ---
@@ -47,6 +58,7 @@ jobs:
 name: E2E Tests
 on:
   push: [main]
+  pull_request: [main]   # PR 트리거 추가
   workflow_dispatch:
 
 jobs:

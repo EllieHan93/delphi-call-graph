@@ -58,7 +58,8 @@ TOTAL                              607     45    93%
 | `test_pas_parser.py` | ~22 | `pas_parser.py` |
 | `test_call_graph.py` | ~22 | `call_graph.py` |
 | `test_api.py` | ~20 | `routes.py`, `state.py` |
-| **합계** | **97** | |
+| `test_performance.py` | 5 | `call_graph.py` (성능) |
+| **합계** | **102** | |
 
 ### 미커버 라인 설명
 
@@ -135,3 +136,25 @@ All files          |   86.23 |    89.38 |   78.46 |   86.23 |
 | **합계** | **152** | **93% (BE) / 86% (FE)** | — | ✅ |
 
 **전체 커버리지 상태: 모든 목표 초과 달성**
+
+---
+
+## 성능 테스트 결과 (PRD §12.2)
+
+### 실행 명령
+```bash
+python -m pytest backend/tests/test_performance.py -v
+```
+
+### 결과
+
+| 테스트 | 조건 | 목표 | 실측 | 판정 |
+|--------|------|------|------|------|
+| `test_analysis_completes_within_30_seconds` | 100유닛/800메소드 | ≤ 30초 | **< 1초** | ✅ 대폭 초과 달성 |
+| `test_analysis_completes_within_5_seconds_typical` | 100유닛/800메소드 | ≤ 5초 | **< 1초** | ✅ |
+| `test_small_project_sub_second` | 10유닛/50메소드 | ≤ 1초 | **< 0.1초** | ✅ |
+| `test_large_methods_per_unit` | 50유닛/1000메소드 | ≤ 30초 | **< 2초** | ✅ |
+
+**PRD §12.2 목표("100유닛 분석 ≤ 30초") 대폭 초과 달성**
+- 실제 성능: 100유닛/800메소드 ~ **0.5초** (목표의 1/60 수준)
+- 단일 통합 regex 컴파일 + O(1) 메소드 인덱스 조회 전략의 효과

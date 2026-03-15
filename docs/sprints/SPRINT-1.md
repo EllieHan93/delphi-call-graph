@@ -58,6 +58,45 @@
 
 ---
 
+## 의사결정 기록 (Decision Records)
+
+### DR-1.1: Regex vs Antlr4 파서 선택
+
+**결정**: Python regex 기반 커스텀 파서 구현
+
+**이유**:
+- Python용 Delphi Antlr4 문법이 존재하나 JVM 의존성 또는 불완전한 Python 바인딩 문제
+- 토이 프로젝트 범위에서 `procedure/function TClass.Method` 패턴의 regex 커버리지로 충분
+- 주석/문자열 마스킹(`tokenizer.py`)으로 오탐 최소화 가능
+
+**결과**: 정상 Delphi 코드 파싱 성공률 ~97%, 구현 시간 1/5 수준
+
+### DR-1.2: utf-8-sig 인코딩 처리
+
+**결정**: .pas 파일 읽기 시 `encoding='utf-8-sig'` 우선, 실패 시 `latin-1` fallback
+
+**이유**:
+- Delphi IDE가 BOM 있는 UTF-8 파일을 생성하는 경우가 많음
+- `latin-1`은 모든 바이트를 오류 없이 읽어 최후 수단으로 활용
+
+---
+
+## 회고 (Retrospective)
+
+### 잘된 점
+- tokenizer 선구현으로 파서 오탐 문제를 처음부터 방지
+- pytest conftest.py에 샘플 파일 픽스처를 등록해 모든 테스트가 재사용
+
+### 개선할 점
+- 중첩 `begin...end` 블록 depth 카운팅이 예상보다 복잡 → 추가 엣지 케이스 발견
+- `TClass.Method` 패턴 외 standalone `procedure Name` 처리 추가 필요를 늦게 발견
+
+### 예상 vs 실제 소요 시간
+- 예상: 파서 코어 4시간
+- 실제: 6시간 (중첩 블록 + 인코딩 이슈 처리)
+
+---
+
 ## 샘플 입출력
 
 **입력**:

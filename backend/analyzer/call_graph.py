@@ -6,6 +6,7 @@ then identifies used vs. unused methods.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 
@@ -18,6 +19,8 @@ from backend.analyzer.models import (
     Project,
 )
 from backend.parser.tokenizer import clean_source, mask_strings
+
+logger = logging.getLogger(__name__)
 
 # Delphi keywords that look like identifiers but are not method calls
 _DELPHI_KEYWORDS = frozenset(
@@ -126,6 +129,24 @@ def _detect_and_link_calls(
     if not caller.body_text:
         return
 
+    try:
+        _do_link_calls(caller, method_index, uses_map, pattern)
+    except Exception as exc:
+        logger.warning(
+            "메소드 호출 탐지 중 오류 발생 — 건너뜀: %s (%s: %s)",
+            caller.id,
+            type(exc).__name__,
+            exc,
+        )
+
+
+def _do_link_calls(
+    caller: Method,
+    method_index: dict[str, list[Method]],
+    uses_map: dict[str, set[str]],
+    pattern: re.Pattern[str],
+) -> None:
+    """호출 탐지 및 양방향 링크 구축 내부 구현."""
     # body_text already has comments stripped; mask string literals to avoid
     # false positives from string contents that look like method names.
     masked = mask_strings(caller.body_text)
@@ -198,6 +219,15 @@ def analyze(project: Project, dpr_source: str = "") -> AnalysisResult:
     Returns:
         AnalysisResult with summary stats and full per-method detail.
     """
+    total_units = len(project.units)
+    total_methods_count = sum(len(u.methods) for u in project.units)
+    logger.info(
+        "분석 시작: 프로젝트=%s, 유닛=%d, 메소드=%d",
+        project.name,
+        total_units,
+        total_methods_count,
+    )
+
     # Reset any previous analysis state on methods (idempotent)
     for unit in project.units:
         for method in unit.methods:
@@ -257,8 +287,18 @@ def analyze(project: Project, dpr_source: str = "") -> AnalysisResult:
         for m in all_methods
     ]
 
-    return AnalysisResult(
+    result = AnalysisResult(
         project_name=project.name,
         summary=summary,
         methods=methods,
     )
+
+    logger.info(
+        "분석 완료: 프로젝트=%s, 총=%d, 사용=%d, 미사용=%d (%.1f%%)",
+        project.name,
+        summary.total_methods,
+        summary.used_count,
+        summary.unused_count,
+        summary.unused_ratio * 100,
+    )
+    return result

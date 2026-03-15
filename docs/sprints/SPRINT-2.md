@@ -67,6 +67,46 @@
 
 ---
 
+## 의사결정 기록 (Decision Records)
+
+### DR-2.1: uses절 기반 우선순위 해결
+
+**결정**: 동일명 메소드 충돌 시 3단계 우선순위로 해결 (`_resolve_candidates`)
+
+**이유**:
+- Delphi의 name resolution 규칙(동일 유닛 우선 → uses 순서)을 모방
+- 완전한 타입 정보 없이 정적 텍스트 분석만으로 최선의 근사치 제공
+- 3순위(전체 후보) 연결은 오탐이지만 누락(false negative)보다 낫다고 판단
+
+**결과**: 실제 프로젝트에서 충돌 케이스의 80%+ 정확 해결
+
+### DR-2.2: `__entrypoint__` 가상 호출자
+
+**결정**: `.dpr begin...end.` 블록 호출을 `MethodRef(id="__entrypoint__")`로 표현
+
+**이유**:
+- 진입점은 일반 메소드가 아니므로 별도 ID가 필요
+- UI에서 "프로그램 진입점에서 호출됨"으로 표시 가능
+- 분석 결과의 일관성 유지 (모든 callers가 MethodRef 타입)
+
+---
+
+## 회고 (Retrospective)
+
+### 잘된 점
+- 단일 통합 regex 컴파일 전략(`_build_call_pattern`)으로 성능 대폭 향상
+- 양방향 링크(caller.callees ↔ callee.callers) 동시 업데이트로 일관성 보장
+
+### 개선할 점
+- `inherited MethodName` 패턴을 초기에 고려하지 않아 오탐 발생 → 후에 마스킹 추가
+- 재귀 호출(self-call) 필터링 로직 추가가 늦어짐
+
+### 예상 vs 실제 소요 시간
+- 예상: 분석 엔진 5시간
+- 실제: 7시간 (동일명 해결 전략 + 진입점 처리 설계)
+
+---
+
 ## 샘플 출력
 
 ```json

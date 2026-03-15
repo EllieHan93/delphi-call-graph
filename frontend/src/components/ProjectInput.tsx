@@ -57,7 +57,7 @@ export default function ProjectInput({ onAnalysisComplete, onAnalysisStart, isDi
             onKeyDown={handleKeyDown}
             placeholder="예: C:/Projects/MyApp/MyApp.dpr"
             disabled={disabled}
-            aria-describedby={error ? 'dpr-path-error' : undefined}
+            aria-describedby={`dpr-path-hint${error ? ' dpr-path-error' : ''}`}
             aria-invalid={error ? 'true' : undefined}
             className={[
               'h-10 border rounded-md px-3 text-sm w-full',
@@ -66,6 +66,9 @@ export default function ProjectInput({ onAnalysisComplete, onAnalysisStart, isDi
               error ? 'border-danger' : 'border-neutral-200',
             ].join(' ')}
           />
+          <p id="dpr-path-hint" className="text-xs text-neutral-500 mt-0.5">
+            절대 경로를 입력하세요 (예: C:\Projects\MyApp.dpr 또는 /home/user/MyApp.dpr)
+          </p>
         </div>
         <button
           onClick={() => void handleAnalyze()}

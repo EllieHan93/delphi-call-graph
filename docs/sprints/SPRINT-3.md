@@ -81,6 +81,46 @@
 
 ---
 
+## 의사결정 기록 (Decision Records)
+
+### DR-3.1: Flat API vs Resource-based API
+
+**결정**: Flat API (`/api/summary`, `/api/methods`) 채택
+
+**이유**:
+- 단일 세션 인메모리 저장 구조에서 analysis_id 관리 오버헤드가 불필요
+- `GET /api/analysis/{uuid}/summary` 형태는 UUID를 프론트엔드에서 보관해야 함
+- 토이 프로젝트 특성: 마지막 분석 결과 1개만 유지, 멀티 세션 불필요
+
+**결과**: 프론트엔드 코드 단순화, API 호출 시 analysis_id 전달 로직 생략
+
+### DR-3.2: 인메모리 싱글턴 상태 관리
+
+**결정**: 글로벌 변수 패턴 (`_analysis_state: AnalysisResult | None`)
+
+**이유**:
+- DB 연결 없는 토이 프로젝트 → SQLite조차 오버엔지니어링
+- 서버 재시작 시 초기화 허용 (개발자 도구 특성)
+- FastAPI의 단일 프로세스 내 공유 가능
+
+---
+
+## 회고 (Retrospective)
+
+### 잘된 점
+- Pydantic v2 `alias_generator=to_camel`로 camelCase 직렬화 자동화
+- httpx + pytest-asyncio 조합으로 비동기 API 테스트 원활
+
+### 개선할 점
+- 초기에 response model을 명시하지 않아 Swagger 문서 품질이 낮았음 → 수정
+- 커버리지 제외 라인(`cli.py`) 처리를 더 명확히 문서화 필요
+
+### 예상 vs 실제 소요 시간
+- 예상: API 구현 3시간
+- 실제: 4시간 (camelCase 직렬화 설정 + 테스트 인프라 구축)
+
+---
+
 ## API 응답 예시
 
 ### `GET /api/summary`

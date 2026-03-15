@@ -132,12 +132,28 @@ AnalysisResult   # 최종 결과 (project_name, summary, methods)
 
 | 메소드 | 경로 | 설명 |
 |--------|------|------|
-| POST | `/api/analyze` | .dpr 경로로 분석 시작, analysis_id 반환 |
-| GET | `/api/analysis/{id}/summary` | 프로젝트 통계 요약 |
-| GET | `/api/analysis/{id}/methods` | 메소드 목록 (페이지네이션, 필터링, 정렬) |
-| GET | `/api/analysis/{id}/methods/{method_id}` | 단일 메소드 상세 |
-| GET | `/api/analysis/{id}/callgraph/{method_id}` | 특정 메소드 중심 그래프 노드/엣지 |
-| GET | `/api/analysis/{id}/units` | 유닛별 사용/미사용 통계 |
+| POST | `/api/analyze` | .dpr 경로로 분석 시작, 요약 통계 즉시 반환 |
+| GET | `/api/summary` | 마지막 분석 결과의 프로젝트 통계 요약 |
+| GET | `/api/methods` | 메소드 목록 (페이지네이션, 유닛/상태/검색 필터링, 정렬) |
+| GET | `/api/methods/{method_id}` | 단일 메소드 상세 (callers, callees, 시그니처) |
+| GET | `/api/callgraph/{method_id}` | 특정 메소드 중심 서브그래프 (`?depth=N`) |
+| GET | `/api/units` | 유닛별 사용/미사용 통계 |
+
+> **설계 결정**: Resource-based API (`/analysis/{id}/...`) 대신 Flat API (`/api/summary` 등)를 선택.
+> 이유: 단일 세션 인메모리 저장 구조에서 analysis_id 관리 오버헤드 불필요.
+> 마지막 분석 결과 1개만 유지하는 토이 프로젝트 특성에 적합.
+
+### 쿼리 파라미터 (`GET /api/methods`)
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|---------|------|--------|------|
+| `unit` | string | — | 유닛명 필터 |
+| `status` | `all`/`used`/`unused` | `all` | 사용 상태 필터 |
+| `search` | string | — | 메소드명 부분 검색 |
+| `sort` | string | `method_name` | 정렬 기준 컬럼 |
+| `order` | `asc`/`desc` | `asc` | 정렬 방향 |
+| `page` | int | 1 | 페이지 번호 (1-based) |
+| `pageSize` | int | 20 | 페이지당 항목 수 |
 
 ### 인메모리 상태 관리 (`backend/api/state.py`)
 
@@ -227,7 +243,188 @@ TMainForm.Create vs TDataModule.Create
 
 ---
 
-## 6. 성능 특성
+## 6. 에러 처리 전략
+
+### 백엔드 에러 처리
+
+```
+routes.py (400/404)
+├── POST /api/analyze
+│   ├── 400: .dpr 확장자 아님
+│   ├── 400: 파일 미존재 또는 접근 불가
+│   └── 400: 파싱 실패 (손상된 파일 등)
+├── GET /api/summary → 404: 분석 전 접근
+├── GET /api/methods/{id} → 404: 없는 메소드 ID
+└── GET /api/callgraph/{id} → 404: 없는 메소드 ID
+
+main.py (글로벌 500 핸들러)
+└── Exception → JSONResponse(500, {"error": str(exc)})
+```
+
+**에러 응답 포맷**: 모든 에러는 `{"error": "설명 메시지"}` 형태로 통일.
+
+### 프론트엔드 에러 처리 (`useApi.ts`)
+
+```typescript
+// fetch 래퍼가 HTTP 에러를 예외로 변환
+if (!response.ok) {
+  const data = await response.json()
+  throw new Error(data.error ?? `HTTP ${response.status}`)
+}
+```
+
+- 네트워크 에러 → `catch` 블록에서 상태 메시지 표시
+- API 에러 → `error` 필드 추출해 사용자 친화적 메시지 표시
+- 컴포넌트별 `error` state → `role="alert"` 영역에 렌더링 (스크린 리더 지원)
+
+---
+
+## 7. 보안 고려사항
+
+### 경로 트래버설 (Path Traversal)
+
+**리스크**: `POST /api/analyze`의 `dprPath` 파라미터로 임의 파일 접근 가능성.
+
+**대응**:
+- `.dpr` 확장자 강제 검증 (`dprPath.endswith('.dpr')`)
+- 파일 존재 여부 확인 후 파싱 (`os.path.isfile`)
+- **로컬 전용 도구**: 외부 공개 배포를 전제하지 않음. 서버와 클라이언트가 같은 머신에서 동작하는 개발자 도구.
+
+### CORS 설정
+
+```python
+allow_origins = ["http://localhost:5173", "http://localhost:3000"]
+```
+
+- 로컬 개발 서버만 허용 (`*` 와일드카드 미사용)
+- 프로덕션 배포 시 실제 도메인으로 제한 필요
+
+### 입력 검증
+
+- `dprPath`: 확장자 + 존재 여부 검증
+- 쿼리 파라미터: Pydantic `Query(...)` 타입 강제 (FastAPI 자동 검증)
+- 메소드 ID: URL 경로 파라미터 → 인메모리 딕셔너리 키 검색 (SQL Injection 없음)
+
+---
+
+## 8. 캐싱 & 성능
+
+### 현재 구현 (in-memory singleton)
+
+```python
+# backend/api/state.py
+_analysis_state: AnalysisResult | None = None
+
+def get_state() -> AnalysisResult | None:
+    return _analysis_state  # O(1) 조회
+```
+
+- 마지막 분석 결과 1개를 전역 변수로 보관
+- 서버 재시작 시 초기화 (인메모리 한계)
+- `POST /api/analyze` 시 이전 결과 즉시 교체
+
+### 분석 엔진 성능 최적화
+
+| 최적화 | 구현 위치 | 효과 |
+|--------|----------|------|
+| 메소드명 → 리스트 인덱스 | `_build_method_index()` | 탐지 시 O(1) 조회 |
+| 단일 통합 regex 컴파일 | `_build_call_pattern()` | regex 1회 컴파일, 재사용 |
+| 긴 이름 우선 정렬 | `names.sort(key=len, reverse=True)` | prefix shadowing 방지 |
+| 주석/문자열 마스킹 | `tokenizer.py` | 오탐 없이 빠른 매칭 |
+
+### 확장 경로 (현재 미구현)
+
+- **LRU 캐시**: 여러 분석 결과 보관 필요 시 `functools.lru_cache` 또는 `cachetools.LRUCache`
+- **Redis**: 다중 인스턴스 환경에서 결과 공유
+
+---
+
+## 9. 배포 아키텍처
+
+### Docker 단일 컨테이너 (권장)
+
+```
+┌─────────────────────────────────────────────┐
+│  Docker Container (python:3.12-slim)        │
+│                                             │
+│  ┌─────────────────────────────────────┐    │
+│  │  uvicorn backend.main:app           │    │
+│  │  ├── /api/*   → FastAPI routes      │    │
+│  │  └── /*       → React SPA (dist/)  │    │
+│  └─────────────────────────────────────┘    │
+│                                             │
+│  PORT: 8000                                 │
+└─────────────────────────────────────────────┘
+```
+
+**멀티스테이지 빌드** (`Dockerfile`):
+1. `node:20-alpine`: `npm run build` → `dist/` 생성
+2. `python:3.12-slim`: 백엔드 + `dist/` 정적 파일 통합
+
+```bash
+# 빌드 및 실행
+docker build -t delphi-call-graph-analyzer .
+docker run -p 8000:8000 delphi-call-graph-analyzer
+
+# 또는 docker-compose 사용
+docker-compose up
+```
+
+### 로컬 개발 (권장)
+
+```bash
+# 백엔드 (포트 8000)
+uvicorn backend.main:app --reload --port 8000
+
+# 프론트엔드 (포트 5173, /api → 8000 프록시)
+cd frontend && npm run dev
+```
+
+---
+
+## 10. 정적 분석 한계 극복 전략
+
+### 문제: 동일명 메소드 오탐
+
+```delphi
+TMainForm.Create    ← 두 유닛에 동일한 메소드명 존재
+TDataModule.Create
+```
+
+**극복**: `_resolve_candidates()` 우선순위 알고리즘
+1. **동일 유닛** → 확실한 로컬 호출
+2. **uses절 명시 유닛** → 가장 가능성 높은 외부 호출
+3. **전체 후보** → 오탐 허용, 정보 제공 우선
+
+### 문제: 주석/문자열 내 메소드명 오탐
+
+```delphi
+// TODO: Initialize 호출 필요
+ShowMessage('Initialize 완료');
+```
+
+**극복**: 2단계 마스킹
+1. `clean_source()`: `{ }`, `// ...`, `(* *)` 주석 제거
+2. `mask_strings()`: `'...'` 문자열 리터럴을 공백으로 대체
+
+### 문제: 진입점 메소드가 미사용으로 분류
+
+```delphi
+// MyApp.dpr
+begin
+  Application.Initialize;
+  Application.CreateForm(TMainForm, MainForm);
+  Application.Run;
+end.
+```
+
+**극복**: `_process_entry_point()` — `.dpr begin...end.` 블록 별도 분석
+- `__entrypoint__` 가상 ID로 callers에 추가
+- 진입점에서 직접 호출된 메소드는 `is_used=True` 보장
+
+---
+
+## 11. 성능 특성
 
 | 작업 | 시간 복잡도 | 실측 (3유닛/12메소드) |
 |------|------------|----------------------|
