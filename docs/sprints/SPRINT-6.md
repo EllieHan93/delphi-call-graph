@@ -70,6 +70,18 @@
 
 ---
 
+## 검증 결과 (2026-03-16)
+
+| 항목 | 결과 |
+|------|------|
+| `pytest` (백엔드, Sprint 1~3 누적) | ✅ 103 passed |
+| `vitest run` (Sprint 4~6 누적) | ✅ 55 passed |
+| `tsc --noEmit` | ✅ 오류 0 |
+| 백엔드 전체 커버리지 | ✅ 91% |
+| 프론트엔드 컴포넌트 커버리지 | ✅ 94% |
+
+---
+
 ## 완료 조건 (Definition of Done)
 
 - [x] Overview / Methods / Call Graph 3개 탭 모두 동작

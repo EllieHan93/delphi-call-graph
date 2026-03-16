@@ -47,6 +47,18 @@
 
 ---
 
+## 검증 결과 (2026-03-16)
+
+| 항목 | 결과 |
+|------|------|
+| `pytest` (Sprint 1 테스트) | ✅ 45 passed (0.09s) |
+| `tsc --noEmit` | 해당 없음 (프론트엔드 미구현) |
+| `parser/dpr_parser.py` 커버리지 | ✅ 100% |
+| `parser/pas_parser.py` 커버리지 | ✅ 97% |
+| `parser/tokenizer.py` 커버리지 | ✅ 95% |
+
+---
+
 ## 완료 조건 (Definition of Done)
 
 - [x] 샘플 Delphi 프로젝트(.dpr + .pas 3개 이상)로 파싱 성공
