@@ -17,7 +17,7 @@ import {
 import dagre from '@dagrejs/dagre'
 import '@xyflow/react/dist/style.css'
 import { api } from '../hooks/useApi'
-import type { CallGraphResponse } from '../types'
+import type { CallGraphResponse, CycleResponse } from '../types'
 
 // ---------------------------------------------------------------------------
 // 타입
@@ -102,7 +102,10 @@ const nodeTypes = { method: MethodNode }
 // API 응답 → ReactFlow 노드/엣지 변환
 // ---------------------------------------------------------------------------
 
-function buildFlowElements(data: CallGraphResponse): { nodes: Node[]; edges: Edge[] } {
+function buildFlowElements(
+  data: CallGraphResponse,
+  cycleEdgeSet: Set<string>,
+): { nodes: Node[]; edges: Edge[] } {
   const rawNodes: Node[] = data.nodes.map((n) => ({
     id: n.id,
     type: 'method',
@@ -116,13 +119,20 @@ function buildFlowElements(data: CallGraphResponse): { nodes: Node[]; edges: Edg
     } satisfies MethodNodeData,
   }))
 
-  const rawEdges: Edge[] = data.edges.map((e, idx) => ({
-    id: `e${idx}-${e.source}->${e.target}`,
-    source: e.source,
-    target: e.target,
-    markerEnd: { type: MarkerType.ArrowClosed },
-    style: { stroke: '#94a3b8' },
-  }))
+  const rawEdges: Edge[] = data.edges.map((e, idx) => {
+    const key = `${e.source}->${e.target}`
+    const isCycle = cycleEdgeSet.has(key)
+    return {
+      id: `e${idx}-${key}`,
+      source: e.source,
+      target: e.target,
+      markerEnd: { type: MarkerType.ArrowClosed, color: isCycle ? '#dc2626' : '#94a3b8' },
+      style: isCycle
+        ? { stroke: '#dc2626', strokeDasharray: '5 3' }
+        : { stroke: '#94a3b8' },
+      animated: isCycle,
+    }
+  })
 
   return { nodes: applyDagreLayout(rawNodes, rawEdges), edges: rawEdges }
 }
@@ -143,12 +153,30 @@ function CallGraphInner({ methodId, onMethodDoubleClick }: InnerProps) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cycleData, setCycleData] = useState<CycleResponse | null>(null)
   const { fitView } = useReactFlow()
 
   // methodId prop 변경 시 중심 초기화
   useEffect(() => {
     setCenterId(methodId)
   }, [methodId])
+
+  // 사이클 데이터 로드 (한 번만)
+  useEffect(() => {
+    api.getCycles().then(setCycleData).catch(() => {})
+  }, [])
+
+  // 사이클 엣지 집합 계산
+  const cycleEdgeSet = useCallback((): Set<string> => {
+    if (!cycleData) return new Set()
+    const s = new Set<string>()
+    for (const cycle of cycleData.cycles) {
+      for (let i = 0; i < cycle.length; i++) {
+        s.add(`${cycle[i]}->${cycle[(i + 1) % cycle.length]}`)
+      }
+    }
+    return s
+  }, [cycleData])
 
   // 그래프 데이터 로드
   useEffect(() => {
@@ -160,7 +188,7 @@ function CallGraphInner({ methodId, onMethodDoubleClick }: InnerProps) {
       .getCallGraph(centerId, depth)
       .then((data) => {
         if (cancelled) return
-        const { nodes: n, edges: e } = buildFlowElements(data)
+        const { nodes: n, edges: e } = buildFlowElements(data, cycleEdgeSet())
         setNodes(n)
         setEdges(e)
         // 레이아웃 적용 후 뷰 맞추기
@@ -178,7 +206,7 @@ function CallGraphInner({ methodId, onMethodDoubleClick }: InnerProps) {
       cancelled = true
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [centerId, depth])
+  }, [centerId, depth, cycleData])
 
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setCenterId(node.id)
@@ -194,7 +222,7 @@ function CallGraphInner({ methodId, onMethodDoubleClick }: InnerProps) {
   return (
     <div className="flex flex-col h-full">
       {/* 컨트롤 바 */}
-      <div className="flex items-center gap-4 px-4 py-3 border-b border-neutral-200 flex-shrink-0">
+      <div className="flex items-center gap-4 px-4 py-3 border-b border-neutral-200 flex-shrink-0 flex-wrap">
         <label className="flex items-center gap-2 text-sm text-neutral-700">
           <span>탐색 깊이</span>
           <input
@@ -208,6 +236,18 @@ function CallGraphInner({ methodId, onMethodDoubleClick }: InnerProps) {
           />
           <span className="w-4 text-center font-mono text-sm tabular-nums">{depth}</span>
         </label>
+        {cycleData && cycleData.count > 0 && (
+          <button
+            onClick={() => {
+              const firstCycle = cycleData.cycles[0]
+              if (firstCycle?.[0]) setCenterId(firstCycle[0])
+            }}
+            className="h-8 px-3 text-xs border border-warning text-warning rounded-md hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-warning"
+            aria-label="첫 번째 순환 참조 보기"
+          >
+            ⟳ 순환 참조 보기 ({cycleData.count})
+          </button>
+        )}
         <button
           onClick={() => fitView({ padding: 0.2 })}
           className="ml-auto h-8 px-3 text-xs border border-neutral-200 rounded-md hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary"

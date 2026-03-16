@@ -10,6 +10,7 @@ import logging
 import re
 from collections import defaultdict
 
+from backend.analyzer.complexity import calculate_complexity, enrich_methods_with_complexity
 from backend.analyzer.models import (
     AnalysisResult,
     AnalysisSummary,
@@ -175,6 +176,58 @@ def _do_link_calls(
                 callee.callers.append(caller_ref)
 
 
+def _detect_cycles(methods: list[Method]) -> list[list[str]]:
+    """DFS back-edge 탐지로 순환 호출 체인을 찾는다.
+
+    Args:
+        methods: 콜 그래프가 완성된 Method 리스트.
+
+    Returns:
+        각 사이클을 구성하는 method id 목록의 리스트.
+        예: [["A.foo", "B.bar", "C.baz"]] — A→B→C→A 사이클.
+    """
+    # adjacency: id → callee id 목록
+    adj: dict[str, list[str]] = {}
+    id_set: set[str] = set()
+    for m in methods:
+        adj[m.id] = [ref.id for ref in m.callees]
+        id_set.add(m.id)
+
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+    stack: list[str] = []
+    cycles: list[list[str]] = []
+    seen_cycles: set[frozenset[str]] = set()
+
+    def dfs(node: str) -> None:
+        visited.add(node)
+        in_stack.add(node)
+        stack.append(node)
+
+        for neighbor in adj.get(node, []):
+            if neighbor not in id_set:
+                continue
+            if neighbor not in visited:
+                dfs(neighbor)
+            elif neighbor in in_stack:
+                # back-edge: 사이클 추출
+                cycle_start = stack.index(neighbor)
+                cycle = stack[cycle_start:]
+                key = frozenset(cycle)
+                if key not in seen_cycles:
+                    seen_cycles.add(key)
+                    cycles.append(list(cycle))
+
+        stack.pop()
+        in_stack.discard(node)
+
+    for m in methods:
+        if m.id not in visited:
+            dfs(m.id)
+
+    return cycles
+
+
 def _extract_entry_body(dpr_source: str) -> str:
     """Extract the begin...end. block from a .dpr source."""
     cleaned = clean_source(dpr_source)
@@ -256,6 +309,9 @@ def analyze(project: Project, dpr_source: str = "") -> AnalysisResult:
         method.call_count = len(method.callers)
         method.is_used = method.call_count > 0
 
+    # Detect cycles
+    cycles = _detect_cycles(all_methods)
+
     # Build summary
     total_methods = len(all_methods)
     used_count = sum(1 for m in all_methods if m.is_used)
@@ -268,6 +324,7 @@ def analyze(project: Project, dpr_source: str = "") -> AnalysisResult:
         used_count=used_count,
         unused_count=unused_count,
         unused_ratio=round(unused_ratio, 4),
+        cycle_count=len(cycles),
     )
 
     methods = [
@@ -287,10 +344,16 @@ def analyze(project: Project, dpr_source: str = "") -> AnalysisResult:
         for m in all_methods
     ]
 
+    # Enrich methods with complexity scores (body_text from Method)
+    body_map = {m.id: m.body_text for m in all_methods}
+    for detail in methods:
+        detail.complexity_score = calculate_complexity(body_map.get(detail.id, "") or "")
+
     result = AnalysisResult(
         project_name=project.name,
         summary=summary,
         methods=methods,
+        cycles=cycles,
     )
 
     logger.info(

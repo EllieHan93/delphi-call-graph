@@ -13,6 +13,7 @@ const mockDetail: MethodDetailResponse = {
   lineNumber: 10,
   callCount: 2,
   isUsed: true,
+  complexityScore: 5,
   callers: [
     { id: 'App.__entrypoint__', unitName: 'App', className: null, methodName: 'Initialize' },
   ],

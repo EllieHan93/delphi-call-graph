@@ -11,6 +11,7 @@ export interface SummaryResponse {
   unusedCount: number
   /** 미사용 비율 (0~100 퍼센트, 백엔드에서 이미 *100 처리) */
   unusedRatio: number
+  cycleCount: number
 }
 
 /** GET /api/methods 목록 아이템 */
@@ -24,6 +25,7 @@ export interface MethodItem {
   lineNumber: number
   callCount: number
   isUsed: boolean
+  complexityScore: number
 }
 
 /** GET /api/methods 응답 */
@@ -82,6 +84,7 @@ export interface CallGraphNode {
 export interface CallGraphEdge {
   source: string
   target: string
+  isCycle?: boolean
 }
 
 /** GET /api/callgraph/{id} 응답 */
@@ -90,4 +93,31 @@ export interface CallGraphResponse {
   depth: number
   nodes: CallGraphNode[]
   edges: CallGraphEdge[]
+}
+
+/** GET /api/cycles 응답 */
+export interface CycleResponse {
+  count: number
+  cycles: string[][]
+}
+
+/** GET /api/complexity 메소드 아이템 */
+export interface ComplexityMethod {
+  id: string
+  methodName: string
+  complexityScore: number
+  isUsed: boolean
+  lineNumber: number
+}
+
+/** GET /api/complexity 유닛 */
+export interface ComplexityUnit {
+  unitName: string
+  avgComplexity: number
+  methods: ComplexityMethod[]
+}
+
+/** GET /api/complexity 응답 */
+export interface ComplexityResponse {
+  units: ComplexityUnit[]
 }

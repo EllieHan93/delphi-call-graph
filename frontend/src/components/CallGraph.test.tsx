@@ -64,10 +64,12 @@ const mockCallGraph = {
 }
 
 const mockGetCallGraph = vi.fn().mockResolvedValue(mockCallGraph)
+const mockGetCycles = vi.fn().mockResolvedValue({ count: 0, cycles: [] })
 
 vi.mock('../hooks/useApi', () => ({
   api: {
     getCallGraph: (...args: unknown[]) => mockGetCallGraph(...args),
+    getCycles: (...args: unknown[]) => mockGetCycles(...args),
   },
 }))
 
@@ -78,6 +80,7 @@ vi.mock('../hooks/useApi', () => ({
 describe('CallGraph', () => {
   beforeEach(() => {
     mockGetCallGraph.mockClear()
+    mockGetCycles.mockClear()
   })
 
   it('methodId가 null이면 모달이 숨김 처리됨', () => {

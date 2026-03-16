@@ -9,6 +9,7 @@ from backend.analyzer.call_graph import (
     _build_method_index,
     _build_uses_set,
     _detect_and_link_calls,
+    _detect_cycles,
     _extract_entry_body,
     _resolve_candidates,
     analyze,
@@ -388,3 +389,79 @@ class TestAnalyzeIntegration:
         result = analyze(project, dpr_source)
         assert isinstance(result, AnalysisResult)
         assert result.project_name == "SampleApp"
+
+
+# ---------------------------------------------------------------------------
+# TestDetectCycles (Sprint 7)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectCycles:
+    """Unit tests for the _detect_cycles DFS back-edge algorithm."""
+
+    def test_simple_triangle_cycle(self) -> None:
+        """A→B→C→A 패턴: 3-노드 사이클 탐지."""
+        a = _make_method("UnitA", "A", body_text="begin B; end;")
+        b = _make_method("UnitA", "B", body_text="begin C; end;")
+        c = _make_method("UnitA", "C", body_text="begin A; end;")
+        project = _make_project(_make_unit("UnitA", [a, b, c]))
+
+        result = analyze(project)
+
+        assert result.summary.cycle_count >= 1
+        assert len(result.cycles) >= 1
+
+        # 사이클 내에 A, B, C id가 있어야 함
+        all_cycle_ids = {mid for cycle in result.cycles for mid in cycle}
+        assert a.id in all_cycle_ids
+        assert b.id in all_cycle_ids
+        assert c.id in all_cycle_ids
+
+    def test_no_cycle_linear(self) -> None:
+        """A→B→C 선형 호출은 사이클이 없어야 한다."""
+        a = _make_method("UnitA", "A", body_text="begin B; end;")
+        b = _make_method("UnitA", "B", body_text="begin C; end;")
+        c = _make_method("UnitA", "C")
+        project = _make_project(_make_unit("UnitA", [a, b, c]))
+
+        result = analyze(project)
+
+        assert result.summary.cycle_count == 0
+        assert result.cycles == []
+
+    def test_mutual_recursion_detected(self) -> None:
+        """A→B→A 상호 재귀 사이클 탐지."""
+        a = _make_method("UnitA", "Alpha", body_text="begin Beta; end;")
+        b = _make_method("UnitA", "Beta", body_text="begin Alpha; end;")
+        project = _make_project(_make_unit("UnitA", [a, b]))
+
+        result = analyze(project)
+
+        assert result.summary.cycle_count >= 1
+
+    def test_detect_cycles_direct(self) -> None:
+        """_detect_cycles를 직접 호출해 결과 타입 확인."""
+        a = _make_method("UnitA", "A", body_text="begin B; end;")
+        b = _make_method("UnitA", "B", body_text="begin A; end;")
+        project = _make_project(_make_unit("UnitA", [a, b]))
+        analyze(project)  # populates callers/callees
+
+        cycles = _detect_cycles([a, b])
+        assert isinstance(cycles, list)
+        assert all(isinstance(c, list) for c in cycles)
+
+    def test_no_cycle_empty_methods(self) -> None:
+        """빈 메소드 목록에서 사이클 탐지 오류 없어야 함."""
+        cycles = _detect_cycles([])
+        assert cycles == []
+
+    def test_cycle_count_in_summary(self) -> None:
+        """AnalysisResult.summary.cycle_count가 cycles 리스트 길이와 일치."""
+        a = _make_method("UnitA", "A", body_text="begin B; end;")
+        b = _make_method("UnitA", "B", body_text="begin C; end;")
+        c = _make_method("UnitA", "C", body_text="begin A; end;")
+        project = _make_project(_make_unit("UnitA", [a, b, c]))
+
+        result = analyze(project)
+
+        assert result.summary.cycle_count == len(result.cycles)

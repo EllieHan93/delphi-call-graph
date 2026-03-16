@@ -40,6 +40,7 @@ class Method(BaseModel):
     callees: list[MethodRef] = Field(default_factory=list)
     call_count: int = Field(default=0, ge=0)
     is_used: bool = False
+    complexity_score: int = 0
 
 
 class Unit(BaseModel):
@@ -67,6 +68,7 @@ class AnalysisSummary(BaseModel):
     used_count: int
     unused_count: int
     unused_ratio: float = Field(ge=0.0, le=1.0)
+    cycle_count: int = 0
 
 
 class MethodDetail(BaseModel):
@@ -83,6 +85,7 @@ class MethodDetail(BaseModel):
     callees: list[MethodRef] = Field(default_factory=list)
     call_count: int = 0
     is_used: bool = False
+    complexity_score: int = 0
 
 
 class AnalysisResult(BaseModel):
@@ -91,3 +94,4 @@ class AnalysisResult(BaseModel):
     project_name: str
     summary: AnalysisSummary
     methods: list[MethodDetail] = Field(default_factory=list)
+    cycles: list[list[str]] = Field(default_factory=list)

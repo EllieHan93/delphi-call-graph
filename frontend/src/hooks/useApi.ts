@@ -1,5 +1,7 @@
 import type {
   CallGraphResponse,
+  ComplexityResponse,
+  CycleResponse,
   MethodDetailResponse,
   MethodListResponse,
   SortByKey,
@@ -73,4 +75,9 @@ export const api = {
     if (depth != null) qs.set('depth', String(depth))
     return apiFetch<CallGraphResponse>(`/api/callgraph/${encodeURIComponent(id)}?${qs.toString()}`)
   },
+
+  getCycles: (): Promise<CycleResponse> => apiFetch<CycleResponse>('/api/cycles'),
+
+  getComplexity: (): Promise<ComplexityResponse> =>
+    apiFetch<ComplexityResponse>('/api/complexity'),
 }

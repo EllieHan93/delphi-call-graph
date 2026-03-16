@@ -10,6 +10,7 @@ const baseSummary: SummaryResponse = {
   usedCount: 35,
   unusedCount: 7,
   unusedRatio: 16.67,
+  cycleCount: 0,
 }
 
 describe('SummaryCards', () => {
@@ -18,13 +19,14 @@ describe('SummaryCards', () => {
     expect(screen.getByText(/TestApp/)).toBeInTheDocument()
   })
 
-  it('5개의 카드가 모두 렌더링된다', () => {
+  it('6개의 카드가 모두 렌더링된다', () => {
     render(<SummaryCards summary={baseSummary} />)
     expect(screen.getByText('총 유닛')).toBeInTheDocument()
     expect(screen.getByText('총 메소드')).toBeInTheDocument()
     expect(screen.getByText('사용 메소드')).toBeInTheDocument()
     expect(screen.getByText('미사용 메소드')).toBeInTheDocument()
     expect(screen.getByText('미사용 비율')).toBeInTheDocument()
+    expect(screen.getByText('순환 참조')).toBeInTheDocument()
   })
 
   it('숫자 값이 올바르게 표시된다', () => {
@@ -57,7 +59,7 @@ describe('SummaryCards', () => {
   it('모든 0인 경우에도 정상 렌더링된다', () => {
     render(
       <SummaryCards
-        summary={{ projectName: 'Empty', totalUnits: 0, totalMethods: 0, usedCount: 0, unusedCount: 0, unusedRatio: 0 }}
+        summary={{ projectName: 'Empty', totalUnits: 0, totalMethods: 0, usedCount: 0, unusedCount: 0, unusedRatio: 0, cycleCount: 0 }}
       />
     )
     expect(screen.getByLabelText(/미사용 비율: 0.0%/)).toBeInTheDocument()

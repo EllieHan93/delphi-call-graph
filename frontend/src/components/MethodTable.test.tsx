@@ -18,6 +18,7 @@ const mockListData: MethodListResponse = {
       lineNumber: 10,
       callCount: 3,
       isUsed: true,
+      complexityScore: 12,
     },
     {
       id: 'Utils.TUtils.OldHelper',
@@ -29,6 +30,7 @@ const mockListData: MethodListResponse = {
       lineNumber: 50,
       callCount: 0,
       isUsed: false,
+      complexityScore: 0,
     },
   ],
 }

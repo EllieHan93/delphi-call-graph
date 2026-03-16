@@ -74,6 +74,18 @@ Delphi는 1995년부터 이어져 온 레거시 언어로, 국내 금융/제조/
   - `callCount`: 호출당하는 총 횟수
   - `isUsed`: callCount > 0 여부
 
+#### 5.1.5 순환 참조 탐지
+- 메소드 간 호출 그래프에서 **사이클(순환 참조)**을 탐지
+- DFS(깊이 우선 탐색) + back-edge 방식으로 사이클 구성 메소드 ID 순서 추출
+- 결과: `AnalysisResult.cycles: list[list[str]]` — 각 리스트가 하나의 사이클
+- 요약 통계에 `cycleCount` 반영, 콜 그래프 엣지에 `isCycle` 플래그 추가
+
+#### 5.1.6 코드 복잡도 분석
+- 메소드 본문(`bodyText`) 기반 복잡도 점수(0~100) 계산
+- 계산 요소: 줄 수, 제어문 키워드(`if/for/while/repeat/case/try/except`) 밀도, 중첩 `begin...end` 최대 깊이
+- 0~100 정규화: 단순 body→낮은 점수, 복잡한 중첩 제어문→높은 점수(≥60)
+- `Method.complexity_score`, `MethodDetail.complexity_score` 필드에 저장
+
 #### 5.1.4 분석 한계 (Scope)
 - **정적 분석만** 수행 (런타임 동적 호출, RTTI, 메시지 핸들러 등은 미탐지)
 - 텍스트 매칭 기반이므로 **오탐(false positive) 가능** — 동일 이름 메소드 구분 불가
@@ -120,6 +132,18 @@ Delphi는 1995년부터 이어져 온 레거시 언어로, 국내 금융/제조/
 #### 5.2.6 유닛별 분석 뷰
 - 유닛 단위로 메소드 사용률 바 차트
 - 미사용률이 높은 유닛 하이라이트
+
+#### 5.2.7 순환 참조 시각화
+- 요약 카드에 "순환 참조" 6번째 카드 추가 (0이면 초록, 1 이상이면 오렌지)
+- 콜 그래프에서 사이클을 구성하는 엣지를 **빨간 점선 + 애니메이션**으로 표시
+- "순환 참조 보기" 버튼으로 첫 번째 사이클 루트를 그래프 중심으로 로드
+
+#### 5.2.8 코드 복잡도 히트맵
+- CSS flexbox 기반 트리맵: 유닛별로 그룹핑, 각 셀에 메소드명 + 복잡도 점수
+- 색상 그라디언트: 0~100 → 초록(낮음) ~ 빨강(높음) 5단계
+- **미사용 + 복잡도 ≥60** 메소드: 점선 테두리 + 경고 아이콘 ⚠ 표시
+- 셀 hover 시 툴팁(메소드명, 유닛, 복잡도, 줄 번호, 사용 여부)
+- 셀 클릭 시 메소드 상세 패널 열기
 
 ## 6. 디자인 시스템
 
@@ -205,7 +229,19 @@ Shadow-lg      0 10px 15px -3px rgba(0,0,0,0.1)     — 플로팅 패널
 | **통합 리뷰** | Sprint 6 | 전체 화면 플로우에서 시각적 일관성, 색상/간격/타이포 통일 확인 |
 | **접근성 감사** | Sprint 6 | Lighthouse Accessibility 점수 ≥ 90, 키보드 전체 탐색 가능 확인 |
 
-## 7. 기술 스택
+## 7. API 설계 (추가: Sprint 7 엔드포인트)
+
+### `GET /api/cycles`
+- **Response**: `{ "cycles": [["MethodA", "MethodB", "MethodC"], ...], "count": N }`
+- 탐지된 모든 순환 참조 목록 반환
+
+### `GET /api/complexity`
+- **Response**: `{ "units": [{ "unitName": "...", "avgComplexity": N, "methods": [...] }] }`
+- 유닛별 복잡도 집계 (트리맵 시각화용)
+
+---
+
+## 8. 기술 스택
 
 | 레이어 | 기술 | 선정 이유 |
 |--------|------|-----------|
@@ -217,7 +253,7 @@ Shadow-lg      0 10px 15px -3px rgba(0,0,0,0.1)     — 플로팅 패널
 | 스타일 | **Tailwind CSS** | 빠른 UI 구성 |
 | 데이터 저장 | **In-memory (dict)** | 토이 프로젝트이므로 DB 불필요 |
 
-## 7. API 설계
+## 9. API 설계
 
 ### `POST /api/analyze`
 - **Request**: `{ "dprPath": "C:/projects/MyApp/MyApp.dpr" }`
@@ -238,7 +274,7 @@ Shadow-lg      0 10px 15px -3px rgba(0,0,0,0.1)     — 플로팅 패널
 ### `GET /api/units`
 - 유닛별 통계 (메소드 수, 사용률)
 
-## 8. 데이터 모델
+## 10. 데이터 모델
 
 ```
 Project
@@ -265,9 +301,22 @@ Method
 ├── callees: MethodRef[]     # 이 메소드가 호출하는 메소드들
 ├── callCount: int           # callers의 총 수
 ├── isUsed: bool             # callCount > 0
+├── complexityScore: int     # 코드 복잡도 점수 (0~100)
+
+AnalysisSummary (요약 통계)
+├── unitCount: int
+├── methodCount: int
+├── usedCount: int
+├── unusedCount: int
+├── cycleCount: int          # 탐지된 순환 참조 수
+
+AnalysisResult
+├── summary: AnalysisSummary
+├── methods: list[Method]
+├── cycles: list[list[str]]  # 각 리스트: 사이클 구성 메소드 ID 순서
 ```
 
-## 9. 파싱 전략
+## 11. 파싱 전략
 
 ### Step 1: .dpr 파싱
 ```
@@ -295,10 +344,10 @@ procedure StandaloneProc;
 - 주석, 문자열 리터럴 내부는 제외
 - `MethodName(` 또는 `Object.MethodName` 패턴 우선 매칭
 
-## 10. 프로젝트 구조
+## 12. 프로젝트 구조
 
 ```
-delphi-call-analyzer/
+hackerton/
 ├── backend/
 │   ├── main.py              # FastAPI 앱 엔트리
 │   ├── parser/
@@ -306,7 +355,8 @@ delphi-call-analyzer/
 │   │   ├── pas_parser.py    # .pas 파일 파서
 │   │   └── tokenizer.py     # 주석/문자열 제거, 토큰화
 │   ├── analyzer/
-│   │   ├── call_graph.py    # 콜 그래프 생성 엔진
+│   │   ├── call_graph.py    # 콜 그래프 + 순환 참조 탐지 엔진
+│   │   ├── complexity.py    # 코드 복잡도 계산 모듈
 │   │   └── models.py        # 데이터 모델 (Pydantic)
 │   ├── api/
 │   │   └── routes.py        # API 라우트 정의
@@ -320,7 +370,8 @@ delphi-call-analyzer/
 │   │   │   ├── MethodTable.tsx
 │   │   │   ├── MethodDetail.tsx
 │   │   │   ├── CallGraph.tsx
-│   │   │   └── UnitChart.tsx
+│   │   │   ├── UnitChart.tsx
+│   │   │   └── ComplexityMap.tsx
 │   │   ├── hooks/
 │   │   │   └── useApi.ts
 │   │   └── types/
@@ -330,7 +381,7 @@ delphi-call-analyzer/
 └── PRD.md
 ```
 
-## 11. 스프린트 계획
+## 13. 스프린트 계획
 
 각 스프린트의 상세 태스크는 `docs/sprints/` 디렉토리에서 관리합니다.
 
@@ -342,10 +393,11 @@ delphi-call-analyzer/
 | **Sprint 4** | 대시보드 — 요약 + 테이블 | 기본 대시보드 UI | [SPRINT-4.md](docs/sprints/SPRINT-4.md) |
 | **Sprint 5** | 콜 그래프 시각화 | 인터랙티브 그래프 | [SPRINT-5.md](docs/sprints/SPRINT-5.md) |
 | **Sprint 6** | 유닛별 분석 + 마무리 | 완성된 대시보드 | [SPRINT-6.md](docs/sprints/SPRINT-6.md) |
+| **Sprint 7** | 순환 참조 탐지 + 복잡도 히트맵 | 고도화된 대시보드 | [SPRINT-7.md](docs/sprints/SPRINT-7.md) |
 
-## 12. 검증 계획
+## 14. 검증 계획
 
-### 12.1 핵심 가설
+### 14.1 핵심 가설
 
 | # | 가설 | 검증 방법 |
 |---|------|-----------|
@@ -353,8 +405,10 @@ delphi-call-analyzer/
 | H2 | 텍스트 매칭 기반 호출 탐지로 실제 호출 관계의 **80% 이상**을 식별할 수 있다 | 소규모 프로젝트에서 IDE "Find References" 결과와 교차 검증 |
 | H3 | 미사용 메소드 식별 결과가 개발자의 수동 판단과 **70% 이상** 일치한다 | Delphi 개발자 2-3명에게 결과 리뷰 요청 |
 | H4 | 대시보드를 통해 프로젝트 전체 메소드 사용 현황을 **5분 이내**에 파악할 수 있다 | 사용성 테스트 — 처음 접하는 사용자가 미사용 메소드 목록까지 도달하는 시간 측정 |
+| H5 | 정적 텍스트 기반 DFS 탐지로 실제 순환 참조의 **90% 이상**을 탐지할 수 있다 | A→B→C→A 패턴 및 다중 사이클 포함 샘플 프로젝트로 자동화 테스트 검증 |
+| H6 | 복잡도 점수(0~100)가 개발자의 주관적 복잡도 판단과 **70% 이상** 일치한다 | 복잡도 높은 메소드 Top 10을 Delphi 경험자가 리뷰하여 일치율 측정 |
 
-### 12.2 성공 지표 (Success Metrics)
+### 14.2 성공 지표 (Success Metrics)
 
 | 지표 | 목표값 | 측정 방법 |
 |------|--------|-----------|
@@ -366,7 +420,7 @@ delphi-call-analyzer/
 | **사용자 Task 완료율** | 첫 분석~결과 확인까지 이탈 없이 완료 | 사용성 테스트 관찰 |
 | **Dead Code 발견율** | 실제 미사용 코드의 70% 이상 식별 | IDE 수동 검증과 비교 |
 
-### 12.3 검증 시나리오
+### 14.3 검증 시나리오
 
 **시나리오 A: 소규모 프로젝트 (10개 유닛 이하)**
 1. 샘플 Delphi 프로젝트 직접 작성 (다양한 패턴 포함)
@@ -383,7 +437,7 @@ delphi-call-analyzer/
 2. Task 완료 시간, 클릭 수, 혼란 지점 관찰
 3. 대시보드의 정보 탐색 흐름이 직관적인지 평가
 
-### 12.4 테스트 전략
+### 14.4 테스트 전략
 
 #### 단위 테스트 (Unit Test)
 | 대상 | 테스트 항목 | 도구 |
@@ -417,7 +471,7 @@ delphi-call-analyzer/
 | React 컴포넌트 | ≥ 70% | 주요 인터랙션 위주 |
 | E2E | 핵심 시나리오 3개 | 전체 플로우 검증 |
 
-### 12.5 CI/CD 파이프라인
+### 14.5 CI/CD 파이프라인
 
 ```
 [Push / PR] → [Lint] → [Unit Test] → [Integration Test] → [Build] → [E2E] → [Deploy Preview]
@@ -436,7 +490,7 @@ CI 환경: **GitHub Actions**
 - `.github/workflows/ci.yml` — lint + test + build
 - `.github/workflows/e2e.yml` — E2E 테스트 (main merge 시)
 
-### 12.6 사용성 테스트 계획
+### 14.6 사용성 테스트 계획
 
 | 항목 | 내용 |
 |------|------|
@@ -447,7 +501,7 @@ CI 환경: **GitHub Actions**
 | **시점** | Sprint 6 완료 후 |
 | **기록** | 관찰 노트 → `docs/usability-test-results.md`에 정리 |
 
-### 12.7 MVP 검증 기준 (Go/No-Go)
+### 14.7 MVP 검증 기준 (Go/No-Go)
 
 | 조건 | 기준 |
 |------|------|
@@ -455,7 +509,7 @@ CI 환경: **GitHub Actions**
 | **Pivot** | 파서 정확도 < 70%인 경우 → AST 기반 파서로 전환 검토 |
 | **Stop** | Delphi 소스의 인코딩/문법 변형이 너무 다양하여 범용 파싱 자체가 비현실적인 경우 |
 
-## 13. 향후 확장 (Out of Scope for v1)
+## 15. 향후 확장 (Out of Scope for v1)
 
 - `.dfm` 파일 파싱으로 이벤트 핸들러 바인딩 탐지
 - `.dcu` 바이너리 유닛 심볼 추출

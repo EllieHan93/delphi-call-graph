@@ -5,10 +5,11 @@ import MethodTable from './components/MethodTable'
 import MethodDetail from './components/MethodDetail'
 import CallGraph from './components/CallGraph'
 import UnitChart from './components/UnitChart'
+import ComplexityMap from './components/ComplexityMap'
 import { api } from './hooks/useApi'
 import type { SummaryResponse } from './types'
 
-type TabId = 'overview' | 'methods' | 'callgraph'
+type TabId = 'overview' | 'methods' | 'callgraph' | 'complexity'
 
 interface UnitFilterOverride {
   unit: string
@@ -23,8 +24,8 @@ function AnalysisSkeleton() {
   return (
     <div aria-label="분석 중..." aria-busy="true" className="space-y-8">
       {/* 카드 스켈레톤 */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        {Array.from({ length: 5 }).map((_, i) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="bg-white rounded-xl border border-neutral-200 p-4 space-y-2">
             <div className="h-3 w-20 bg-neutral-200 rounded animate-pulse" />
             <div className="h-7 w-12 bg-neutral-200 rounded animate-pulse" />
@@ -106,6 +107,7 @@ export default function App() {
     { id: 'overview', label: 'Overview' },
     { id: 'methods', label: 'Methods' },
     { id: 'callgraph', label: 'Call Graph' },
+    { id: 'complexity', label: 'Complexity' },
   ]
 
   return (
@@ -199,6 +201,21 @@ export default function App() {
                 unitFilterOverride={unitFilterOverride}
               />
             </div>
+
+            {/* Complexity 탭 */}
+            {activeTab === 'complexity' && (
+              <div
+                id="tabpanel-complexity"
+                role="tabpanel"
+                aria-labelledby="tab-complexity"
+                className="bg-white rounded-lg border border-neutral-200 p-6"
+              >
+                <ComplexityMap
+                  key={summary.projectName + summary.totalMethods}
+                  onMethodClick={(id) => { setSelectedMethodId(id) }}
+                />
+              </div>
+            )}
 
             {/* Call Graph 탭 */}
             <div

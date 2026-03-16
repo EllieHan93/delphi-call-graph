@@ -10,6 +10,7 @@ const mockSummary: SummaryResponse = {
   usedCount: 10,
   unusedCount: 5,
   unusedRatio: 33.33,
+  cycleCount: 0,
 }
 
 function makeFetchSuccess(data: unknown) {

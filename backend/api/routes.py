@@ -34,6 +34,7 @@ class SummaryResponse(_CamelModel):
     used_count: int
     unused_count: int
     unused_ratio: float = Field(description="미사용 비율 (0~100 퍼센트)")
+    cycle_count: int = 0
 
 
 class MethodItem(_CamelModel):
@@ -46,6 +47,7 @@ class MethodItem(_CamelModel):
     line_number: int
     call_count: int
     is_used: bool
+    complexity_score: int = 0
 
 
 class MethodListResponse(_CamelModel):
@@ -75,6 +77,7 @@ class MethodDetailResponse(_CamelModel):
     callers: list[MethodRefItem]
     callees: list[MethodRefItem]
     body_text: str
+    complexity_score: int = 0
 
 
 class GraphNode(_CamelModel):
@@ -111,6 +114,29 @@ class UnitStatsResponse(_CamelModel):
     units: list[UnitStats]
 
 
+class CyclesResponse(_CamelModel):
+    count: int
+    cycles: list[list[str]]
+
+
+class ComplexityMethodItem(_CamelModel):
+    id: str
+    method_name: str
+    complexity_score: int
+    is_used: bool
+    line_number: int
+
+
+class ComplexityUnit(_CamelModel):
+    unit_name: str
+    avg_complexity: float
+    methods: list[ComplexityMethodItem]
+
+
+class ComplexityResponse(_CamelModel):
+    units: list[ComplexityUnit]
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -138,6 +164,7 @@ def analyze(body: AnalyzeRequest) -> SummaryResponse:
         used_count=s.used_count,
         unused_count=s.unused_count,
         unused_ratio=round(s.unused_ratio * 100, 2),
+        cycle_count=s.cycle_count,
     )
 
 
@@ -157,6 +184,7 @@ def get_summary() -> SummaryResponse:
         used_count=s.used_count,
         unused_count=s.unused_count,
         unused_ratio=round(s.unused_ratio * 100, 2),
+        cycle_count=s.cycle_count,
     )
 
 
@@ -211,6 +239,7 @@ def list_methods(
             line_number=m.line_number,
             call_count=m.call_count,
             is_used=m.is_used,
+            complexity_score=m.complexity_score,
         )
         for m in page_items
     ]
@@ -248,6 +277,7 @@ def get_method(method_id: str) -> MethodDetailResponse:
             for r in method.callees
         ],
         body_text=body_text,
+        complexity_score=method.complexity_score,
     )
 
 
@@ -347,3 +377,43 @@ def list_units() -> UnitStatsResponse:
         )
 
     return UnitStatsResponse(total=len(unit_stats), units=unit_stats)
+
+
+@router.get("/cycles", response_model=CyclesResponse)
+def get_cycles() -> CyclesResponse:
+    """탐지된 순환 참조 목록을 반환합니다."""
+    state = get_state()
+    if state.result is None:
+        raise HTTPException(status_code=404, detail="분석 결과가 없습니다. 먼저 /api/analyze를 호출하세요.")
+
+    cycles = state.result.cycles
+    return CyclesResponse(count=len(cycles), cycles=cycles)
+
+
+@router.get("/complexity", response_model=ComplexityResponse)
+def get_complexity() -> ComplexityResponse:
+    """유닛별 복잡도 집계 데이터를 반환합니다 (트리맵용)."""
+    state = get_state()
+    if state.result is None:
+        raise HTTPException(status_code=404, detail="분석 결과가 없습니다. 먼저 /api/analyze를 호출하세요.")
+
+    unit_map: dict[str, list] = {}
+    for method in state.result.methods:
+        unit_map.setdefault(method.unit_name, []).append(method)
+
+    units: list[ComplexityUnit] = []
+    for unit_name, methods in sorted(unit_map.items()):
+        items = [
+            ComplexityMethodItem(
+                id=m.id,
+                method_name=m.method_name,
+                complexity_score=m.complexity_score,
+                is_used=m.is_used,
+                line_number=m.line_number,
+            )
+            for m in methods
+        ]
+        avg = round(sum(m.complexity_score for m in methods) / len(methods), 1) if methods else 0.0
+        units.append(ComplexityUnit(unit_name=unit_name, avg_complexity=avg, methods=items))
+
+    return ComplexityResponse(units=units)
