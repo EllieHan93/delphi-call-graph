@@ -70,17 +70,6 @@
 
 ---
 
-## 검증 결과 (2026-03-16)
-
-| 항목 | 결과 |
-|------|------|
-| `pytest` (Sprint 1~3 누적) | ✅ 103 passed (0.43s) |
-| `tsc --noEmit` | 해당 없음 (프론트엔드 미구현) |
-| 백엔드 전체 커버리지 | ✅ 91% |
-| `api/routes.py` 커버리지 | ✅ 90% |
-
----
-
 ## 완료 조건 (Definition of Done)
 
 - [x] `uvicorn backend.main:app` 으로 서버 기동
